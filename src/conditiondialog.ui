@@ -1776,6 +1776,30 @@ QPushButton:hover {
                </widget>
               </item>
               <item row="1" column="0">
+               <layout class="QHBoxLayout" name="hboxFortSize">
+                <item>
+                 <widget class="QCheckBox" name="checkFortSize">
+                  <property name="toolTip"><string>Filter by the total number of fortress pieces</string></property>
+                  <property name="text"><string>Piece count</string></property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinFortSizeMin">
+                  <property name="maximum"><number>200</number></property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLabel" name="labelFortSize"><property name="text"><string>to</string></property></widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinFortSizeMax">
+                  <property name="maximum"><number>200</number></property>
+                  <property name="value"><number>200</number></property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item row="3" column="0">
                <spacer name="verticalSpacer_3">
                 <property name="orientation">
                  <enum>Qt::Vertical</enum>
@@ -1783,7 +1807,7 @@ QPushButton:hover {
                 <property name="sizeHint" stdset="0">
                  <size>
                   <width>20</width>
-                  <height>333</height>
+                  <height>300</height>
                  </size>
                 </property>
                </spacer>
@@ -1814,6 +1838,26 @@ QPushButton:hover {
              </property>
              <layout class="QGridLayout" name="gridLayoutPortal2">
               <item row="0" column="0">
+               <widget class="QCheckBox" name="checkPortalUnderground">
+                <property name="toolTip">
+                 <string>Unchecked: any. Partially checked: require underground. Checked: require surface.</string>
+                </property>
+                <property name="text">
+                 <string>Underground</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QCheckBox" name="checkPortalAirpocket">
+                <property name="toolTip">
+                 <string>Unchecked: any. Partially checked: require air pocket. Checked: require no air pocket.</string>
+                </property>
+                <property name="text">
+                 <string>Air pocket</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="0">
                <widget class="QCheckBox" name="checkStartPortal">
                 <property name="toolTip">
                  <string>Allow only structures that start with one of the selected pieces</string>
@@ -1823,7 +1867,7 @@ QPushButton:hover {
                 </property>
                </widget>
               </item>
-              <item row="1" column="0">
+              <item row="4" column="0">
                <widget class="QScrollArea" name="scrollPortalPieces">
                 <property name="widgetResizable">
                  <bool>true</bool>
@@ -1873,6 +1917,30 @@ QPushButton:hover {
                </widget>
               </item>
               <item row="1" column="0">
+               <layout class="QHBoxLayout" name="hboxEndSize">
+                <item>
+                 <widget class="QCheckBox" name="checkEndSize">
+                  <property name="toolTip"><string>Filter by the total number of end-city pieces</string></property>
+                  <property name="text"><string>Piece count</string></property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinEndSizeMin">
+                  <property name="maximum"><number>200</number></property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLabel" name="labelEndSize"><property name="text"><string>to</string></property></widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinEndSizeMax">
+                  <property name="maximum"><number>200</number></property>
+                  <property name="value"><number>200</number></property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item row="2" column="0">
                <spacer name="verticalSpacer_2">
                 <property name="orientation">
                  <enum>Qt::Vertical</enum>
@@ -1939,6 +2007,31 @@ QPushButton:hover {
           </layout>
          </widget>
         </widget>
+       </item>
+       <item row="5" column="0" colspan="2">
+        <layout class="QHBoxLayout" name="hboxFacing">
+         <item>
+          <widget class="QLabel" name="labelFacing">
+           <property name="text"><string>Facing</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboFacing">
+           <property name="toolTip"><string>Filter by the structure's rotation / orientation</string></property>
+           <item><property name="text"><string>Any</string></property></item>
+           <item><property name="text"><string>North</string></property></item>
+           <item><property name="text"><string>East</string></property></item>
+           <item><property name="text"><string>South</string></property></item>
+           <item><property name="text"><string>West</string></property></item>
+          </widget>
+         </item>
+         <item>
+          <spacer name="hspacerFacing">
+           <property name="orientation"><enum>Qt::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+          </spacer>
+         </item>
+        </layout>
        </item>
       </layout>
      </widget>
