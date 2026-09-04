@@ -92,6 +92,7 @@ enum
     F_BIOME_SAMPLE,
     F_NOISE_SAMPLE,
     F_CHAMBERS,
+    F_ABANDONED_CAMP,
     // new filters should be added here at the end to keep some downwards compatibility
     FILTER_MAX,
 };
@@ -512,6 +513,13 @@ static const struct FilterList : private FilterInfo
             ""
         };
 
+        list[F_ABANDONED_CAMP] = FilterInfo{
+            CAT_STRUCT, 1, LOC_RAD, Abandoned_Camp, 1, BR_CLUST, MC_26_3, MC_NEWEST, 0, 0, disp++,
+            "camp",
+            QT_TRANSLATE_NOOP("Filter", "Abandoned camp"),
+            ""
+        };
+
         list[F_PORTAL] = FilterInfo{
             CAT_STRUCT, 0, LOC_RAD, Ruined_Portal, 1, BR_CLUST, MC_1_16_1, MC_NEWEST, 0, 0, disp++,
             "portal",
@@ -589,6 +597,16 @@ struct /*__attribute__((packed))*/ Condition
         VAR_DENSE_BB    = 0x0008, // fortress with a 2x2 arrangement of start/crossings
         VAR_NOT         = 0x0010, // invert flag (e.g. not abandoned)
         VAR_BASEMENT    = 0x0020, // igloo with basement
+        // per-property with/without pairs (independent, no shared VAR_NOT)
+        VAR_UNDERGROUND = 0x0040, // ruined portal: underground
+        VAR_SURFACE     = 0x0080, // ruined portal: on surface
+        VAR_AIRPOCKET   = 0x0100, // ruined portal: has air pocket
+        VAR_NO_AIRPOCK  = 0x0200, // ruined portal: no air pocket
+        VAR_GIANT       = 0x0400, // ruined portal: giant
+        VAR_SMALL       = 0x0800, // ruined portal: small (not giant)
+        VAR_SIZE        = 0x1000, // fortress/end-city size range (uses varstart)
+        VAR_SPAWNERS    = 0x2000, // fortress spawner count range (uses varstart)
+        VAR_FACING      = 0x4000, // facing/rotation filter (uses varbiome as mask)
     };
     enum { // min/max
         // legacy 0:min<= 1:max>= 2:min>= 3:max<=

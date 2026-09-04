@@ -23,6 +23,14 @@
 
 #define WARNING_CHAR QChar(0x26A0)
 
+// structures whose getVariant() yields a rotation/orientation we can filter by
+static bool filterHasFacing(int f)
+{
+    return f == F_PORTAL || f == F_PORTALN || f == F_BASTION || f == F_VILLAGE
+        || f == F_ANCIENT_CITY || f == F_DESERT || f == F_JUNGLE || f == F_HUT
+        || f == F_IGLOO;
+}
+
 ConditionDialog::ConditionDialog(FormConditions *parent, MapView *mapview, Config *config, WorldInfo wi, QListWidgetItem *item, Condition *initcond)
     : QDialog(parent, Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint)
     , ui(new Ui::ConditionDialog)
@@ -195,6 +203,16 @@ ConditionDialog::ConditionDialog(FormConditions *parent, MapView *mapview, Confi
     ui->checkAbandoned->setStyleSheet(tristyle);
     ui->checkEndShip->setStyleSheet(tristyle);
     ui->checkBasement->setStyleSheet(tristyle);
+    for (QCheckBox *cb : { ui->checkPortalUnderground, ui->checkPortalAirpocket })
+    {
+        cb->setTristate(true);
+        cb->setStyleSheet(tristyle);
+    }
+    // grey out range spinboxes until their enabling checkbox is ticked
+    connect(ui->checkFortSize,  &QCheckBox::toggled, ui->spinFortSizeMin,  &QWidget::setEnabled);
+    connect(ui->checkFortSize,  &QCheckBox::toggled, ui->spinFortSizeMax,  &QWidget::setEnabled);
+    connect(ui->checkEndSize,   &QCheckBox::toggled, ui->spinEndSizeMin,   &QWidget::setEnabled);
+    connect(ui->checkEndSize,   &QCheckBox::toggled, ui->spinEndSizeMax,   &QWidget::setEnabled);
 
     memset(climaterange, 0, sizeof(climaterange));
     memset(climatecomplete, 0, sizeof(climatecomplete));
@@ -426,6 +444,36 @@ ConditionDialog::ConditionDialog(FormConditions *parent, MapView *mapview, Confi
         ui->checkAbandoned->setCheckState(totristate(cond.varflags, Condition::VAR_ABANODONED));
         ui->checkEndShip->setCheckState(totristate(cond.varflags, Condition::VAR_ENDSHIP));
         ui->checkBasement->setCheckState(totristate(cond.varflags, Condition::VAR_BASEMENT));
+        auto totristate2 = [](uint16_t st, uint16_t yes, uint16_t no) {
+            return (st & yes) ? Qt::PartiallyChecked : (st & no) ? Qt::Checked : Qt::Unchecked;
+        };
+        ui->checkPortalUnderground->setCheckState(totristate2(cond.varflags, Condition::VAR_UNDERGROUND, Condition::VAR_SURFACE));
+        ui->checkPortalAirpocket->setCheckState(totristate2(cond.varflags, Condition::VAR_AIRPOCKET, Condition::VAR_NO_AIRPOCK));
+        if (cond.type == F_FORTRESS)
+        {
+            ui->checkFortSize->setChecked(cond.varflags & Condition::VAR_SIZE);
+            if (cond.varflags & Condition::VAR_SIZE)
+            {
+                ui->spinFortSizeMin->setValue((int)((cond.varstart >> 32) & 0xFFFF));
+                ui->spinFortSizeMax->setValue((int)((cond.varstart >> 48) & 0xFFFF));
+            }
+        }
+        else if (cond.type == F_ENDCITY)
+        {
+            ui->checkEndSize->setChecked(cond.varflags & Condition::VAR_SIZE);
+            if (cond.varflags & Condition::VAR_SIZE)
+            {
+                ui->spinEndSizeMin->setValue((int)(cond.varstart & 0xFFFF));
+                ui->spinEndSizeMax->setValue((int)((cond.varstart >> 16) & 0xFFFF));
+            }
+        }
+        {   // facing (shared control; applies to any structure that has a rotation)
+            int fi = 0;
+            if (cond.varflags & Condition::VAR_FACING)
+                for (int r = 0; r < 4; r++)
+                    if (cond.varbiome & (1 << r)) { fi = r + 1; break; }
+            ui->comboFacing->setCurrentIndex(fi);
+        }
         for (VariantCheckBox *cb : qAsConst(variantboxes))
         {
             int idx = cb->sp - g_start_pieces;
@@ -625,6 +673,9 @@ void ConditionDialog::updateMode()
     {
         ui->stackedWidget->setCurrentWidget(ui->pageFortress);
         ui->checkDenseBB->setEnabled(true);
+        ui->checkFortSize->setEnabled(true);
+        ui->spinFortSizeMin->setEnabled(ui->checkFortSize->isChecked());
+        ui->spinFortSizeMax->setEnabled(ui->checkFortSize->isChecked());
     }
     else if (filterindex == F_BASTION)
     {
@@ -635,11 +686,16 @@ void ConditionDialog::updateMode()
     {
         ui->stackedWidget->setCurrentWidget(ui->pagePortal);
         ui->checkStartPortal->setEnabled(wi.mc >= MC_1_16_1);
+        ui->checkPortalUnderground->setEnabled(wi.mc >= MC_1_16_1);
+        ui->checkPortalAirpocket->setEnabled(wi.mc >= MC_1_16_1);
     }
     else if (filterindex == F_ENDCITY)
     {
         ui->stackedWidget->setCurrentWidget(ui->pageEndCity);
         ui->checkBasement->setEnabled(wi.mc >= MC_1_9);
+        ui->checkEndSize->setEnabled(true);
+        ui->spinEndSizeMin->setEnabled(ui->checkEndSize->isChecked());
+        ui->spinEndSizeMax->setEnabled(ui->checkEndSize->isChecked());
     }
     else if (filterindex == F_IGLOO)
     {
@@ -662,6 +718,10 @@ void ConditionDialog::updateMode()
     {
         ui->stackedWidget->setCurrentWidget(ui->pageNone);
     }
+
+    bool hasfacing = filterHasFacing(filterindex);
+    ui->labelFacing->setVisible(hasfacing);
+    ui->comboFacing->setVisible(hasfacing);
 
     updateBiomeSelection();
 
@@ -720,7 +780,9 @@ void ConditionDialog::updateBiomeSelection()
     for (int i = 0, n = ui->comboScale->count(); i < n; i++)
     {
         ui->comboScale->setItemText(i, QString::asprintf("1:%d", 1 << (i*2)));
-        ui->comboScale->setItemData(i, QVariant::Invalid, Qt::UserRole-1);
+        // Re-enable the item. NB: an invalid QVariant here yields flags==0
+        // (disabled) on Qt 6.10+, so set explicit selectable|enabled flags.
+        ui->comboScale->setItemData(i, (int)(Qt::ItemIsSelectable | Qt::ItemIsEnabled), Qt::UserRole-1);
     }
     // ui->comboScale->setItemData(0, false, Qt::UserRole-1); // disable voronoi
 
@@ -999,6 +1061,18 @@ static uint16_t tristateFlags(QCheckBox *cb, uint16_t flg)
     return ret;
 }
 
+// Independent with/without pair (no shared VAR_NOT):
+// partially checked -> 'yes' flag, checked -> 'no' flag, unchecked -> neither.
+static uint16_t triPairFlags(QCheckBox *cb, uint16_t yes, uint16_t no)
+{
+    switch (cb->checkState())
+    {
+    case Qt::PartiallyChecked: return yes;
+    case Qt::Checked:          return no;
+    default:                   return 0;
+    }
+}
+
 
 void ConditionDialog::onReject()
 {
@@ -1142,6 +1216,7 @@ void ConditionDialog::onAccept()
     }
 
     c.varflags = c.varstart = 0;
+    c.varbiome = 0;
     if (ui->checkStartPieces->isChecked())
         c.varflags |= Condition::VAR_WITH_START;
     if (ui->checkDenseBB->isChecked())
@@ -1149,12 +1224,38 @@ void ConditionDialog::onAccept()
     c.varflags |= tristateFlags(ui->checkAbandoned, Condition::VAR_ABANODONED);
     c.varflags |= tristateFlags(ui->checkEndShip, Condition::VAR_ENDSHIP);
     c.varflags |= tristateFlags(ui->checkBasement, Condition::VAR_BASEMENT);
+    c.varflags |= triPairFlags(ui->checkPortalUnderground, Condition::VAR_UNDERGROUND, Condition::VAR_SURFACE);
+    c.varflags |= triPairFlags(ui->checkPortalAirpocket, Condition::VAR_AIRPOCKET, Condition::VAR_NO_AIRPOCK);
 
     for (VariantCheckBox *cb : qAsConst(variantboxes))
     {
         if (!cb->isChecked())
             continue;
         c.varstart |= 1ULL << (cb->sp - g_start_pieces);
+    }
+    {   // fortress / end-city numeric ranges (packed into varstart)
+        int ft = ui->comboType->currentData().toInt();
+        if (ft == F_FORTRESS)
+        {
+            if (ui->checkFortSize->isChecked())  c.varflags |= Condition::VAR_SIZE;
+            c.varstart = ((uint64_t)(ui->spinFortSizeMin->value() & 0xFFFF) << 32)
+                       | ((uint64_t)(ui->spinFortSizeMax->value() & 0xFFFF) << 48);
+        }
+        else if (ft == F_ENDCITY)
+        {
+            if (ui->checkEndSize->isChecked()) c.varflags |= Condition::VAR_SIZE;
+            c.varstart = ((uint64_t)(ui->spinEndSizeMin->value() & 0xFFFF))
+                       | ((uint64_t)(ui->spinEndSizeMax->value() & 0xFFFF) << 16);
+        }
+        if (filterHasFacing(ft))
+        {
+            int fi = ui->comboFacing->currentIndex();
+            if (fi > 0)
+            {
+                c.varflags |= Condition::VAR_FACING;
+                c.varbiome = (int16_t)(1 << (fi - 1));
+            }
+        }
     }
 
     getClimateLimits(c.limok, c.limex);

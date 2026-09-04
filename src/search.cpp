@@ -782,6 +782,15 @@ static const QuadInfo *getQMInfo(uint64_t s48)
 }
 
 
+// unified orientation index 0..3 from rotation(+mirror); matches the shared
+// "Facing" control. varbiome holds the allowed-orientation bit mask.
+static bool facingOk(const Condition *c, const StructureVariant *sv)
+{
+    if (!(c->varflags & Condition::VAR_FACING)) return true;
+    int face = (sv->rotation + 2 * (sv->mirror ? 1 : 0)) & 3;
+    return (c->varbiome & (1 << face)) != 0;
+}
+
 static bool isVariantOk(const Condition *c, SearchThreadEnv *e, int stype, int varbiome, Pos *pos)
 {
     StructureVariant sv;
@@ -797,12 +806,14 @@ static bool isVariantOk(const Condition *c, SearchThreadEnv *e, int stype, int v
             if (!(c->varflags & Condition::VAR_NOT) && !sv.abandoned)
                 return false;
         }
+        if (!facingOk(c, &sv)) return false;
         if (!(c->varflags & Condition::VAR_WITH_START) || e->mc < MC_1_14) return true;
     }
     else if (stype == Bastion)
     {
         if (e->mc <= MC_1_15) return true;
         getVariant(&sv, stype, e->mc, e->seed, pos->x, pos->z, -1);
+        if (!facingOk(c, &sv)) return false;
         if (!(c->varflags & Condition::VAR_WITH_START)) return true;
     }
     else if (stype == Ruined_Portal || stype == Ruined_Portal_N)
@@ -811,32 +822,61 @@ static bool isVariantOk(const Condition *c, SearchThreadEnv *e, int stype, int v
         e->init4Dim(stype == Ruined_Portal ? DIM_OVERWORLD : DIM_NETHER);
         varbiome = getBiomeAt(&e->g, 4, (pos->x >> 2) + 2, 0, (pos->z >> 2) + 2);
         getVariant(&sv, stype, e->mc, e->seed, pos->x, pos->z, varbiome);
+        if ((c->varflags & Condition::VAR_UNDERGROUND) && !sv.underground) return false;
+        if ((c->varflags & Condition::VAR_SURFACE)     &&  sv.underground) return false;
+        if ((c->varflags & Condition::VAR_AIRPOCKET)   && !sv.airpocket)   return false;
+        if ((c->varflags & Condition::VAR_NO_AIRPOCK)  &&  sv.airpocket)   return false;
+        if (!facingOk(c, &sv)) return false;
         if (!(c->varflags & Condition::VAR_WITH_START)) return true;
     }
     else if (stype == Igloo)
     {
-        if (!(c->varflags & Condition::VAR_BASEMENT)) return true;
+        if (!(c->varflags & (Condition::VAR_BASEMENT | Condition::VAR_FACING))) return true;
         getVariant(&sv, stype, e->mc, e->seed, pos->x, pos->z, -1);
-        return (c->varflags & Condition::VAR_NOT ? !sv.basement : sv.basement);
+        if (!facingOk(c, &sv)) return false;
+        if (c->varflags & Condition::VAR_BASEMENT)
+            return (c->varflags & Condition::VAR_NOT ? !sv.basement : sv.basement);
+        return true;
     }
     else if (stype == End_City)
     {
-        if (!(c->varflags & Condition::VAR_ENDSHIP)) return true;
+        uint16_t vf = c->varflags;
+        if (!(vf & (Condition::VAR_ENDSHIP | Condition::VAR_SIZE))) return true;
         Piece pieces[END_CITY_PIECES_MAX];
         int i, n = getEndCityPieces(pieces, e->seed, pos->x >> 4, pos->z >> 4);
-        bool withship = !(c->varflags & Condition::VAR_NOT);
-        for (i = 0; i < n; i++)
-            if (pieces[i].type == END_SHIP)
-                return withship;
-        return !withship;
+        if (vf & Condition::VAR_SIZE)
+        {   // total piece count; range packed in varstart bits [0:15] min, [16:31] max
+            int mn = (int)(c->varstart & 0xFFFF);
+            int mx = (int)((c->varstart >> 16) & 0xFFFF);
+            if (n < mn || n > mx) return false;
+        }
+        if (vf & Condition::VAR_ENDSHIP)
+        {
+            bool withship = !(vf & Condition::VAR_NOT);
+            for (i = 0; i < n; i++)
+                if (pieces[i].type == END_SHIP)
+                    return withship;
+            return !withship;
+        }
+        return true;
     }
     else if (stype == Fortress)
     {
-        if (!(c->varflags & Condition::VAR_DENSE_BB)) return true;
+        uint16_t vf = c->varflags;
+        if (!(vf & (Condition::VAR_DENSE_BB | Condition::VAR_SIZE)))
+            return true;
         enum { FP_MAX = 400 };
         Piece p[FP_MAX];
         int i, n, b;
         n = getFortressPieces(p, FP_MAX, e->mc, e->seed, pos->x >> 4, pos->z >> 4);
+        if (vf & Condition::VAR_SIZE)
+        {   // total piece count; range packed in varstart bits [32:47] min, [48:63] max
+            int mn = (int)((c->varstart >> 32) & 0xFFFF);
+            int mx = (int)((c->varstart >> 48) & 0xFFFF);
+            if (n < mn || n > mx) return false;
+        }
+        if (!(vf & Condition::VAR_DENSE_BB))
+            return true;
         for (b = i = 0; i < n; i++)
             if (p[i].type == FORTRESS_START || p[i].type == BRIDGE_CROSSING)
                 p[b++] = p[i];
@@ -859,6 +899,13 @@ static bool isVariantOk(const Condition *c, SearchThreadEnv *e, int stype, int v
             }
         }
         return false;
+    }
+    else if (stype == Ancient_City || stype == Desert_Pyramid ||
+             stype == Jungle_Temple || stype == Swamp_Hut)
+    {   // facing-only structures
+        if (!(c->varflags & Condition::VAR_FACING)) return true;
+        getVariant(&sv, stype, e->mc, e->seed, pos->x, pos->z, -1);
+        return facingOk(c, &sv);
     }
     else
     {
@@ -1276,6 +1323,7 @@ L_qm_any:
     case F_ANCIENT_CITY:
     case F_TRAILS:
     case F_CHAMBERS:
+    case F_ABANDONED_CAMP:
 
     case F_FORTRESS:
     case F_BASTION:
